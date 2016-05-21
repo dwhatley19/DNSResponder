@@ -62,4 +62,29 @@ public:
 
 	FixedRR(USHORT q, USHORT c, int t, USHORT l) : qType(q), qClass(c), TTL(t), len(l) {}
 };
+
+class ClientFunctions {
+public:
+	int buf_len;
+	std::string cache[MAX_DNS_SIZE];
+	int limit;
+
+	USHORT make_buf(SOCKET sock, char *buf, char *host, int qtype, int *len);
+	bool send_buf(SOCKET sock, char *in_buf, char *out_buf, char *server, int len);
+	void check_jump(unsigned int jump, int fl);
+	std::string print_name(unsigned char *buf, int cur_pos, int first, int *final_pos);
+	bool parse_buf(unsigned char *buf, USHORT id);
+
+	ClientFunctions() : limit(1e9)
+	{
+		for (int i = 0; i < MAX_DNS_SIZE; ++i) cache[i] = "";
+	}
+};
+
+class ThreadParams {
+public:
+	char *a_ip, *b_ip;
+	ClientFunctions *cf;
+	HANDLE eventQuit; // set when client receives error
+};
 #pragma pack(pop) // restores old packing 
