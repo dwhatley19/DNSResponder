@@ -134,23 +134,9 @@ bool ClientFunctions::send_buf(SOCKET sock, char *in_buf, char *out_buf, char *s
 	printf("Server: %s\n", server);
 	printf("********************************\n");
 
-	// Connect socket
-	struct sockaddr_in local;
-	memset(&local, 0, sizeof(local));
-
-	local.sin_family = AF_INET;
-	local.sin_addr.s_addr = INADDR_ANY;
-	local.sin_port = htons(0);
-
-	// Bind socket
-	if (bind(sock, (struct sockaddr*)&local, sizeof(local)) == SOCKET_ERROR) {
-		printf("Socket error %d\n", WSAGetLastError());
-		_return(1);
-	}
-
 	// Send buffer
 	struct sockaddr_in remote;
-	memset(&local, 0, sizeof(local));
+	memset(&remote, 0, sizeof(remote));
 
 	remote.sin_family = AF_INET;
 	remote.sin_addr.s_addr = inet_addr(server); // server’s IP
@@ -164,7 +150,7 @@ bool ClientFunctions::send_buf(SOCKET sock, char *in_buf, char *out_buf, char *s
 		printf("[client] Attempt %d with %d bytes...\n", count, len);
 
 		if (sendto(sock, in_buf, len, 0, (struct sockaddr*)&remote, sender_size) == SOCKET_ERROR) {
-			printf("Socket error %d\n", WSAGetLastError());
+			printf("[client] socket error %d\n", WSAGetLastError());
 			_return(1);
 		}
 
@@ -173,7 +159,7 @@ bool ClientFunctions::send_buf(SOCKET sock, char *in_buf, char *out_buf, char *s
 		FD_SET(sock, &fd);
 
 		struct timeval timeout;
-		timeout.tv_sec = 10;
+		timeout.tv_sec = 9;
 		timeout.tv_usec = 0;
 
 		// Check how many bytes available from socket
@@ -182,7 +168,7 @@ bool ClientFunctions::send_buf(SOCKET sock, char *in_buf, char *out_buf, char *s
 
 		// Error check
 		if (res == 0) {
-			printf("[client] Timeout in %d ms\n", clock() - c1);
+			printf("[client] timeout in %d ms\n", clock() - c1);
 			continue;
 		}
 		else if (res == SOCKET_ERROR) {
@@ -202,18 +188,16 @@ bool ClientFunctions::send_buf(SOCKET sock, char *in_buf, char *out_buf, char *s
 
 			if (bytes <= sizeof(FixedDNSHeader)) {
 				printf("\n  ++ invalid reply: smaller than fixed header\n");
-				_return(1);
+				return false;
 			}
 
-			printf("[client] Response in %d ms with %d bytes\n", clock() - c1, bytes);
+			printf("[client] response in %d ms with %d bytes\n", clock() - c1, bytes);
 			buf_len = bytes;
 
-			closesocket(sock);
 			return true;
 		}
 	}
 
-	closesocket(sock);
 	return false;
 }
 
@@ -230,13 +214,13 @@ bool ClientFunctions::parse_buf(unsigned char *buf, USHORT id)
 	if (head[0] != id) {
 		printf("  ++ invalid reply: TXID mismatch, sent 0x%x, received 0x%x\n",
 			ntohs(id), ntohs(head[0]));
-		_return(1);
+		return false;
 	}
 
 	// Rcode != 0
 	if ((ntohs(head[1]) & 0xF) != 0) {
 		printf("  failed with Rcode = %d\n", ntohs(head[1]) & 0xF);
-		_return(1);
+		return false;
 	}
 
 	unsigned char *lstart = (unsigned char *)(head);
@@ -253,7 +237,7 @@ bool ClientFunctions::parse_buf(unsigned char *buf, USHORT id)
 		printf(" ------------ [%s] ----------\n", st[x]);
 
 		for (int i = 0; i < ntohs(head[2 + x]); ++i) {
-			check_jump(cur_pos + 1, NUMRR_CHECK);
+			if (!check_jump(cur_pos + 1, NUMRR_CHECK)) return false;
 
 			if (x == 0) {
 				// parsing questions field -> query header
@@ -273,7 +257,7 @@ bool ClientFunctions::parse_buf(unsigned char *buf, USHORT id)
 				printf("\t%s", s.c_str());
 				cur_pos = final_pos;
 
-				check_jump((unsigned int)(cur_pos + sizeof(FixedRR) - 1), RR_CHECK);
+				if (!check_jump((unsigned int)(cur_pos + sizeof(FixedRR) - 1), RR_CHECK)) return false;
 
 				FixedRR *rr = (FixedRR *)(lstart + cur_pos);
 				// flip qType
@@ -283,7 +267,7 @@ bool ClientFunctions::parse_buf(unsigned char *buf, USHORT id)
 				// only process these 4
 				if (fQType == DNS_A) {
 					// name + IP address
-					check_jump(cur_pos + 3, VALUE_CHECK);
+					if (!check_jump(cur_pos + 3, VALUE_CHECK)) return false;
 					printf(" A %d.%d.%d.%d ",
 						lstart[cur_pos], lstart[cur_pos + 1], lstart[cur_pos + 2], lstart[cur_pos + 3]);
 					printf(" TTL = %d\n", ntohl(rr->TTL));
@@ -292,7 +276,7 @@ bool ClientFunctions::parse_buf(unsigned char *buf, USHORT id)
 				}
 				else if (fQType == DNS_CNAME || fQType == DNS_NS || fQType == DNS_PTR) {
 					// name + name
-					check_jump(cur_pos + ntohs(rr->len) - 1, VALUE_CHECK);
+					if (!check_jump(cur_pos + ntohs(rr->len) - 1, VALUE_CHECK)) return false;
 					printf(" %s ", typetoa(fQType).c_str());
 
 					// make new buffer, then parse that

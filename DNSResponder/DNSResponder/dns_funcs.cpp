@@ -5,35 +5,35 @@ using namespace std;
 
 // range check
 // fl = 1 if jump, 0 if normal range check
-void ClientFunctions::check_jump(unsigned int jump, int fl)
+bool ClientFunctions::check_jump(unsigned int jump, int fl)
 {
 	if (jump < sizeof(FixedDNSHeader) && fl == JUMP_CHECK) {
 		printf("  ++ invalid record: jump into fixed header\n");
-		_return(1);
+		return false;
 	}
 	else if (jump >= buf_len && fl == JUMP_CHECK) {
 		printf("  ++ invalid record: jump beyond packet boundary\n");
-		_return(1);
+		return false;
 	}
 	else if (jump >= buf_len && fl == NAME_CHECK) {
 		printf("  ++ invalid record: truncated name\n");
-		_return(1);
+		return false;
 	}
 	else if (jump >= buf_len && fl == RR_CHECK) {
 		printf("  ++ invalid record: truncated fixed RR header\n");
-		_return(1);
+		return false;
 	}
 	else if (jump >= buf_len && fl == OFFSET_CHECK) {
 		printf("  ++ invalid record: truncated jump offset\n");
-		_return(1);
+		return false;
 	}
 	else if (jump >= buf_len && fl == VALUE_CHECK) {
 		printf("  ++ invalid record: value length beyond packet\n");
-		_return(1);
+		return false;
 	}
 	else if (jump >= buf_len && fl == NUMRR_CHECK) {
 		printf("  ++ invalid section: not enough records\n");
-		_return(1);
+		return false;
 	}
 }
 
@@ -61,12 +61,12 @@ string ClientFunctions::print_name(unsigned char *buf, int cur_pos, int first, i
 			cur_pos += 2;
 			if (cur_pos >= limit) break;
 
-			check_jump(cur_pos + 1, OFFSET_CHECK);
+			if (!check_jump(cur_pos + 1, OFFSET_CHECK)) return false;
 
 			// get jump length
 			unsigned short jump = (buf[cur_pos - 1] * 256 + buf[cur_pos]) & 0x3FFF;
 
-			check_jump(jump, JUMP_CHECK);
+			if (!check_jump(jump, JUMP_CHECK)) return false;
 
 			// check if this position is visited from the same location
 			if (vis.find(pii(jump, cur_pos - 1)) == vis.end()) {
@@ -88,11 +88,11 @@ string ClientFunctions::print_name(unsigned char *buf, int cur_pos, int first, i
 		++cur_pos;
 		// add stuff to the string
 		for (int j = 0; j < seglen; ++j) {
-			check_jump(cur_pos, NAME_CHECK);
+			if (!check_jump(cur_pos, NAME_CHECK)) return false;
 			res2 += buf[cur_pos++];
 		}
 
-		check_jump(cur_pos, NAME_CHECK);
+		if (!check_jump(cur_pos, NAME_CHECK)) return false;
 		seglen = buf[cur_pos];
 
 		if (seglen >= 0xc0) --cur_pos;

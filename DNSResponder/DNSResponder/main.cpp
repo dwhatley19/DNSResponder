@@ -14,9 +14,9 @@ void print_usage()
 
 int main(int argc, char **argv)
 {
-	argc = 3;
+	/*argc = 3;
 	argv[1] = "127.0.0.1";
-	argv[2] = "1.0.0.0";
+	argv[2] = "1.0.0.0";*/
 
 	srand(time(NULL));
 

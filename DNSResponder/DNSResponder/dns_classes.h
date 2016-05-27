@@ -12,6 +12,7 @@
 #define DNS_PTR 12 /* IP -> name */
 #define DNS_HINFO 13 /* host info/SOA */
 #define DNS_MX 15 /* mail exchange */
+#define DNS_AAAA 28 /* IPv6 */
 #define DNS_AXFR 252 /* request for zone transfer */
 #define DNS_ANY 255 /* all records */
 
@@ -71,7 +72,7 @@ public:
 
 	USHORT make_buf(SOCKET sock, char *buf, char *host, int qtype, int *len);
 	bool send_buf(SOCKET sock, char *in_buf, char *out_buf, char *server, int len);
-	void check_jump(unsigned int jump, int fl);
+	bool check_jump(unsigned int jump, int fl);
 	std::string print_name(unsigned char *buf, int cur_pos, int first, int *final_pos);
 	bool parse_buf(unsigned char *buf, USHORT id);
 

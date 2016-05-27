@@ -7,20 +7,6 @@
 // receives out_buf.
 bool recv_buf(SOCKET sock, char *out_buf, struct sockaddr_in *remote)
 {
-	// Connect socket
-	struct sockaddr_in local;
-	memset(&local, 0, sizeof(local));
-
-	local.sin_family = AF_INET;
-	local.sin_addr.s_addr = INADDR_ANY;
-	local.sin_port = htons(53);
-
-	// Bind socket
-	if (bind(sock, (struct sockaddr*)&local, sizeof(local)) == SOCKET_ERROR) {
-		printf("Socket error %d\n", WSAGetLastError());
-		_return(1);
-	}
-
 	memset(remote, 0, sizeof(struct sockaddr_in));
 	int sender_size = sizeof(struct sockaddr_in);
 
@@ -29,24 +15,39 @@ bool recv_buf(SOCKET sock, char *out_buf, struct sockaddr_in *remote)
 	// Receive
 	// No receive loop necessary: each call to recvfrom is 1 packet
 	// Blocking: goes to sleep when no packet immediately available
-	clock_t c1 = clock();
-	int bytes = recvfrom(sock, out_buf, MAX_DNS_SIZE, NULL, (struct sockaddr*)remote, &sender_size);
-	if (bytes == SOCKET_ERROR) {
-		// also catches too many bytes, so we're ok
-		printf("recv() socket error %d\n", WSAGetLastError());
-		_return(1);
-	}
-	printf("[server] Received %d bytes\n", bytes);
-	
-	if (bytes <= sizeof(FixedDNSHeader)) {
-		printf("\n  ++ invalid reply: smaller than fixed header\n");
-		_return(1);
-	}
+	while (true) {
+		clock_t c1 = clock();
 
-	//printf("response in %d ms with %d bytes\n", clock() - c1, bytes);
+		fd_set fd;
+		FD_ZERO(&fd);
+		FD_SET(sock, &fd);
 
-	//closesocket(sock); // this is only done in below function
-	return true;
+		struct timeval tv;
+		tv.tv_sec = 9;
+		tv.tv_usec = 0;
+		int res = select(0, &fd, NULL, NULL, &tv);
+
+		if (res == 0) continue;
+		else if (res == SOCKET_ERROR) {
+			printf("[server] select() socket error %d\n", WSAGetLastError());
+			_return(1);
+		}
+
+		int bytes = recvfrom(sock, out_buf, MAX_DNS_SIZE, NULL, (struct sockaddr*)remote, &sender_size);
+
+		if (bytes == SOCKET_ERROR) {
+			// also catches too many bytes, so we're ok
+			printf("[server] recv() socket error %d\n", WSAGetLastError());
+			_return(1);
+		}
+
+		if (bytes <= sizeof(FixedDNSHeader)) {
+			printf("\n  ++ invalid reply: smaller than fixed header\n");
+			return false;
+		}
+
+		return true;
+	}
 }
 
 // get the name in regular format from DNS format
@@ -101,7 +102,7 @@ bool respond(char *in_buf, char *out_buf, char *b_ip, int *len)
 
 	char name[MAX_DNS_SIZE];
 	parse_name(in_buf + sizeof(FixedDNSHeader), name);
-	printf("[server] Query: %s\n", name);
+	printf("[server] Query: %s, ", name);
 
 	USHORT txid = ntohs(fd->ID);
 	
@@ -113,10 +114,14 @@ bool respond(char *in_buf, char *out_buf, char *b_ip, int *len)
 	//FixedRR typeA(DNS_A, DNS_INET, 0, 4);
 	//FixedRR typeNS(DNS_NS, DNS_INET, 0, depends_on_name);
 
-	QueryHeader *qh = (QueryHeader *)(in_buf + strlen(name) + 2 + sizeof(FixedDNSHeader)); 
+	QueryHeader *qh = (QueryHeader *)(in_buf + strlen(name) + 2 + sizeof(FixedDNSHeader));
+	printf("Type: %d\n", ntohs(qh->qtype));
+
+	int sz = strlen(name);
 
 	// the X and Y need to be changed, but not now
-	if (strcmp(name, "X-Y.iresearch.us") == 0) {
+	if ((strncmp(name + sz - 12, "iresearch.us", 12) == 0
+		|| strncmp(name + sz - 12, "IRESEARCH.us", 12) == 0) && sz != 22) {
 		USHORT *head = (USHORT *)out_buf;
 		head[0] = htons(txid);
 		head[1] = htons(0x8500);
@@ -134,7 +139,17 @@ bool respond(char *in_buf, char *out_buf, char *b_ip, int *len)
 		out_qh->qtype = htons(ntohs(qh->qtype));
 		
 		cur_pos += sizeof(QueryHeader);
-		char *ns = "ns.X-Y.iresearch.us";
+
+		if (ntohs(qh->qtype) == DNS_AAAA) {
+			head[1] = htons(0x8502);
+			return true;
+		}
+
+		char ns[MAX_DNS_SIZE];
+		ns[0] = 0;
+
+		strcat(ns, "ns.");
+		strcat(ns, name);
 
 		// AUTHORITY
 		change_name(name, out_buf + cur_pos);
@@ -161,7 +176,7 @@ bool respond(char *in_buf, char *out_buf, char *b_ip, int *len)
 
 		*len = cur_pos;
 	}
-	else if (strcmp(name, "ns.X-Y.iresearch.us") == 0) {
+	else if (strlen(name) == 22 && strncmp(name + 10, "iresearch.us", 12) == 0) {
 		// this is the query where X doesn't "trust" us
 
 		USHORT *head = (USHORT *)out_buf;
@@ -181,7 +196,13 @@ bool respond(char *in_buf, char *out_buf, char *b_ip, int *len)
 		out_qh->qtype = htons(ntohs(qh->qtype));
 
 		cur_pos += sizeof(QueryHeader);
-		char *ns = "ns.X-Y.iresearch.us";
+
+		if (ntohs(qh->qtype) == DNS_AAAA) {
+			head[1] = htons(0x8502);
+			return true;
+		}
+
+		char *ns = name;
 
 		// ANSWER
 		change_name(ns, out_buf + cur_pos);
@@ -217,7 +238,6 @@ bool respond(char *in_buf, char *out_buf, char *b_ip, int *len)
 		out_qh->qtype = htons(ntohs(qh->qtype));
 
 		cur_pos += sizeof(QueryHeader);
-		char *ns = "ns.X-Y.iresearch.us";
 
 		*len = cur_pos;
 	}
@@ -234,6 +254,5 @@ bool send_buf(SOCKET sock, char *buf, int len, struct sockaddr_in remote)
 		_return(1);
 	}
 
-	closesocket(sock);
 	return true;
 }
