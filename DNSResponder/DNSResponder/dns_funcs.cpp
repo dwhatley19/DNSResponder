@@ -61,7 +61,7 @@ string ClientFunctions::print_name(unsigned char *buf, int cur_pos, int first, i
 			cur_pos += 2;
 			if (cur_pos >= limit) break;
 
-			if (!check_jump(cur_pos + 1, OFFSET_CHECK)) return false;
+			if (!check_jump(cur_pos, OFFSET_CHECK)) return false;
 
 			// get jump length
 			unsigned short jump = (buf[cur_pos - 1] * 256 + buf[cur_pos]) & 0x3FFF;

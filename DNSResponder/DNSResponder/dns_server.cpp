@@ -120,8 +120,8 @@ bool respond(char *in_buf, char *out_buf, char *b_ip, int *len)
 	int sz = strlen(name);
 
 	// the X and Y need to be changed, but not now
-	if ((strncmp(name + sz - 12, "iresearch.us", 12) == 0
-		|| strncmp(name + sz - 12, "IRESEARCH.us", 12) == 0) && sz != 22) {
+	if ((sz == 19 || sz == 16) && (strncmp(name + sz - 12, "iresearch.us", 12) == 0
+		/*|| strncmp(name + sz - 12, "IRESEARCH.us", 12) == 0*/)) {
 		USHORT *head = (USHORT *)out_buf;
 		head[0] = htons(txid);
 		head[1] = htons(0x8500);
@@ -141,7 +141,9 @@ bool respond(char *in_buf, char *out_buf, char *b_ip, int *len)
 		cur_pos += sizeof(QueryHeader);
 
 		if (ntohs(qh->qtype) == DNS_AAAA) {
-			head[1] = htons(0x8502);
+			head[1] = htons(0x8503);
+			head[4] = htons(0);
+			head[5] = htons(0);
 			return true;
 		}
 
@@ -199,6 +201,7 @@ bool respond(char *in_buf, char *out_buf, char *b_ip, int *len)
 
 		if (ntohs(qh->qtype) == DNS_AAAA) {
 			head[1] = htons(0x8502);
+			head[3] = htons(0);
 			return true;
 		}
 

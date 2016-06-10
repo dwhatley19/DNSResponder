@@ -159,7 +159,7 @@ bool ClientFunctions::send_buf(SOCKET sock, char *in_buf, char *out_buf, char *s
 		FD_SET(sock, &fd);
 
 		struct timeval timeout;
-		timeout.tv_sec = 9;
+		timeout.tv_sec = 20;
 		timeout.tv_usec = 0;
 
 		// Check how many bytes available from socket

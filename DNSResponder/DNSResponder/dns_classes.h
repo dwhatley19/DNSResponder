@@ -40,6 +40,7 @@
 #define NUMRR_CHECK 6
 
 typedef std::pair<int, int> pii;
+typedef std::pair<char *, int> pci;
 #define A first
 #define B second
 
@@ -82,10 +83,27 @@ public:
 	}
 };
 
+class Packet {
+public:
+	char *buf;
+	int len;
+	struct sockaddr_in dest;
+
+	Packet(char *buf2, int len2, struct sockaddr_in dest2) : 
+		buf(buf2), len(len2), dest(dest2) {}
+};
+
 class ThreadParams {
 public:
 	char *a_ip, *b_ip;
 	ClientFunctions *cf;
-	HANDLE eventQuit; // set when client receives error
+	HANDLE eventQuit; // set when program needs to quit
+
+	// server multithreading stuff
+	SOCKET serverSock;
+	struct sockaddr_in remote;
+	CRITICAL_SECTION cs;
+	std::queue<Packet> serverQ;
+	HANDLE qSize;
 };
 #pragma pack(pop) // restores old packing 
