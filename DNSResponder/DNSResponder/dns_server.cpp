@@ -46,6 +46,7 @@ bool recv_buf(SOCKET sock, char *out_buf, struct sockaddr_in *remote)
 			return false;
 		}
 
+		printf("[server] received a buffer\n");
 		return true;
 	}
 }

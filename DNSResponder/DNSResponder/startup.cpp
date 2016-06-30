@@ -175,27 +175,55 @@ int startup_client(LPVOID params)
 
 		// Check if valid IP
 		DWORD IP = inet_addr(lookup);
-		int qtype;
-		if (IP == INADDR_NONE) qtype = DNS_A;
+		int qtype, iters = 1;
+		if (IP == INADDR_NONE) {
+			iters = 2;
+			qtype = DNS_A;
+		}
 		else qtype = DNS_PTR;
 
 		// Make buffer to send
-		char buf[MAX_DNS_SIZE];
+		char buf[MAX_DNS_SIZE], buf6[MAX_DNS_SIZE];
 		int len;
 		int id = cf->make_buf(sock, buf, lookup, qtype, &len);
-
+#ifdef TRY_IPV6
+		int id6;
+		if (iters == 2) {
+			qtype = DNS_AAAA;
+			id6 = cf->make_buf(sock, buf6, lookup, qtype, &len);
+		}
+#endif
 		// Send & receive buffer
 		// NEED SEMAPHORE
 		char out_buf[MAX_DNS_SIZE + 1];
-		bool res = cf->send_buf(sock, buf, out_buf, tp->a_ip, len);
-		unsigned char *uout_buf = (unsigned char *)out_buf;
-
-		if (res == false) {
-			printf("Read operation failed.\n");
-			_return(1);
+#ifdef TRY_IPV6
+		char out_buf6[MAX_DNS_SIZE + 1];
+#endif
+		int res = cf->send_buf(sock, buf, tp->a_ip, len);
+#ifdef TRY_IPV6
+		int res6;
+		if (iters > 1) {
+			res6 = cf->send_buf(sock, buf6, tp->a_ip, len);
 		}
+#endif
+		res = cf->recv_buf(sock, out_buf, tp->a_ip, len);
+#ifdef TRY_IPV6
+		if (iters > 1) {
+			res = cf->recv_buf(sock, out_buf6, tp->a_ip, len);
+		}
+#endif
+
+		unsigned char *uout_buf = (unsigned char *)out_buf;
+#ifdef TRY_IPV6
+		unsigned char *uout_buf6 = (unsigned char *)out_buf6;
+#endif
 
 		cf->parse_buf(uout_buf, id);
+#ifdef TRY_IPV6
+		if (iters > 1) {
+			cf->parse_buf(uout_buf6, id6);
+		}
+#endif
 
 		printf("\n\nSuccess!\n\n");
 	}

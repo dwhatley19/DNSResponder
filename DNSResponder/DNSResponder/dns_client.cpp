@@ -7,7 +7,7 @@ extern string typetoa(int type);
 
 // Takes pointer to buffer, host.
 // Type A
-void make_questionA(char *buf, char *host)
+void make_questionA(char *buf, char *host, bool aaaa)
 {
 	int cur_pos = 0, buf_pos = 0;
 	int n = strlen(host);
@@ -99,8 +99,9 @@ USHORT ClientFunctions::make_buf(SOCKET sock, char *buf, char *host, int qtype, 
 	fd->answers = htons(0), fd->authority = htons(0), fd->additional = htons(0);
 
 	// Make the question
-	if (qtype == DNS_A) make_questionA(buf + sizeof(FixedDNSHeader), host);
-	else make_questionPTR(buf + sizeof(FixedDNSHeader), host);
+	if (qtype == DNS_A) make_questionA(buf + sizeof(FixedDNSHeader), host, false);
+	else if(qtype == DNS_PTR) make_questionPTR(buf + sizeof(FixedDNSHeader), host);
+	else make_questionA(buf + sizeof(FixedDNSHeader), host, true);
 
 	printf("Query : ");
 	for (int i = 0; i < strlen(buf + sizeof(FixedDNSHeader) + 1); ++i) {
@@ -129,7 +130,7 @@ USHORT ClientFunctions::make_buf(SOCKET sock, char *buf, char *host, int qtype, 
 }
 
 // Sends in_buf to server and receives out_buf.
-bool ClientFunctions::send_buf(SOCKET sock, char *in_buf, char *out_buf, char *server, int len)
+bool ClientFunctions::send_buf(SOCKET sock, char *in_buf, char *server, int len)
 {
 	printf("Server: %s\n", server);
 	printf("********************************\n");
@@ -144,61 +145,66 @@ bool ClientFunctions::send_buf(SOCKET sock, char *in_buf, char *out_buf, char *s
 
 	int sender_size = sizeof(remote);
 
-	// Receive buffer
 	int count = 0;
-	while (count++ < MAX_ATTEMPTS) {
-		printf("[client] Attempt %d with %d bytes...\n", count, len);
+	printf("[client] Attempt %d with %d bytes...\n", count, len);
 
-		if (sendto(sock, in_buf, len, 0, (struct sockaddr*)&remote, sender_size) == SOCKET_ERROR) {
-			printf("[client] socket error %d\n", WSAGetLastError());
-			_return(1);
-		}
-
-		fd_set fd;
-		FD_ZERO(&fd);
-		FD_SET(sock, &fd);
-
-		struct timeval timeout;
-		timeout.tv_sec = 20;
-		timeout.tv_usec = 0;
-
-		// Check how many bytes available from socket
-		clock_t c1 = clock();
-		int res = select(0, &fd, NULL, NULL, &timeout);
-
-		// Error check
-		if (res == 0) {
-			printf("[client] timeout in %d ms\n", clock() - c1);
-			continue;
-		}
-		else if (res == SOCKET_ERROR) {
-			printf("[client] select() socket error %d\n", WSAGetLastError());
-			_return(1);
-		}
-
-		// Receive
-		if (res > 0) {
-			// No receive loop necessary: each call to recvfrom is 1 packet
-			int bytes = recvfrom(sock, out_buf, MAX_DNS_SIZE, NULL, (struct sockaddr*)&remote, &sender_size);
-			if (bytes == SOCKET_ERROR) {
-				// also catches too many bytes, so we're ok
-				printf("[client] recv() socket error %d\n", WSAGetLastError());
-				_return(1);
-			}
-
-			if (bytes <= sizeof(FixedDNSHeader)) {
-				printf("\n  ++ invalid reply: smaller than fixed header\n");
-				return false;
-			}
-
-			printf("[client] response in %d ms with %d bytes\n", clock() - c1, bytes);
-			buf_len = bytes;
-
-			return true;
-		}
+	if (sendto(sock, in_buf, len, 0, (struct sockaddr*)&remote, sender_size) == SOCKET_ERROR) {
+		printf("[client] socket error %d\n", WSAGetLastError());
+		_return(1);
 	}
 
-	return false;
+	remote2 = &remote;
+
+	return true;
+}
+
+int ClientFunctions::recv_buf(SOCKET sock, char *out_buf, char *server, int len)
+{
+	struct sockaddr_in remote = *remote2;
+	int sender_size = sizeof(remote);
+	
+	fd_set fd;
+	FD_ZERO(&fd);
+	FD_SET(sock, &fd);
+
+	struct timeval timeout;
+	timeout.tv_sec = 20;
+	timeout.tv_usec = 0;
+
+	// Check how many bytes available from socket
+	clock_t c1 = clock();
+	int res = select(0, &fd, NULL, NULL, &timeout);
+
+	// Error check
+	if (res == 0) {
+		printf("[client] timeout in %d ms\n", clock() - c1);
+		return QUERY_TIMEOUT;
+	}
+	else if (res == SOCKET_ERROR) {
+		printf("[client] select() socket error %d\n", WSAGetLastError());
+		_return(1);
+	}
+
+	// Receive
+	if (res > 0) {
+		// No receive loop necessary: each call to recvfrom is 1 packet
+		int bytes = recvfrom(sock, out_buf, MAX_DNS_SIZE, NULL, (struct sockaddr*)remote2, &sender_size);
+		if (bytes == SOCKET_ERROR) {
+			// also catches too many bytes, so we're ok
+			printf("[client] recv() socket error %d\n", WSAGetLastError());
+			_return(1);
+		}
+
+		if (bytes <= sizeof(FixedDNSHeader)) {
+			printf("\n  ++ invalid reply: smaller than fixed header\n");
+			return false;
+		}
+
+		printf("[client] response in %d ms with %d bytes\n", clock() - c1, bytes);
+		buf_len = bytes;
+
+		return true;
+	}
 }
 
 // Parses binary buffer.
@@ -211,11 +217,11 @@ bool ClientFunctions::parse_buf(unsigned char *buf, USHORT id)
 	printf("questions %d answers %d authority %d additional %d\n",
 		ntohs(head[2]), ntohs(head[3]), ntohs(head[4]), ntohs(head[5]));
 
-	if (head[0] != id) {
+	/*if (head[0] != id) {
 		printf("  ++ invalid reply: TXID mismatch, sent 0x%x, received 0x%x\n",
 			ntohs(id), ntohs(head[0]));
 		return false;
-	}
+	}*/
 
 	// Rcode != 0
 	if ((ntohs(head[1]) & 0xF) != 0) {

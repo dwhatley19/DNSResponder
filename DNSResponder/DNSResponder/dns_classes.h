@@ -39,6 +39,11 @@
 #define VALUE_CHECK 5
 #define NUMRR_CHECK 6
 
+#define SUCCESS 1
+#define QUERY_TIMEOUT 2
+
+#define TRY_IPV6
+
 typedef std::pair<int, int> pii;
 typedef std::pair<char *, int> pci;
 #define A first
@@ -70,9 +75,11 @@ public:
 	int buf_len;
 	std::string cache[MAX_DNS_SIZE];
 	int limit;
+	struct sockaddr_in *remote2;
 
 	USHORT make_buf(SOCKET sock, char *buf, char *host, int qtype, int *len);
-	bool send_buf(SOCKET sock, char *in_buf, char *out_buf, char *server, int len);
+	bool send_buf(SOCKET sock, char *in_buf, char *server, int len);
+	int recv_buf(SOCKET sock, char *out_buf, char *server, int len);
 	bool check_jump(unsigned int jump, int fl);
 	std::string print_name(unsigned char *buf, int cur_pos, int first, int *final_pos);
 	bool parse_buf(unsigned char *buf, USHORT id);
